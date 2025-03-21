@@ -1,0 +1,164 @@
+Function Documentation
+------------------------------
+
+1. clean_tradebook(tradebook: pd.DataFrame) -> pd.DataFrame
+------------------------------------------------------------
+Summary:
+    Standardizes the input tradebook DataFrame by converting raw data into a more usable format.
+Details:
+    Input:
+        - tradebook: A DataFrame that must contain the columns "timestamp_utc_nanoseconds", "PriceMillionths", and "SizeBillionths".
+    Processing:
+        - Creates a new column "ts_ns" by converting the timestamp to a 64-bit integer.
+        - Converts "PriceMillionths" to a dollar value in a new "price" column.
+        - Converts "SizeBillionths" to standard units in a new "size" column.
+    Output:
+        - A cleaned DataFrame with additional columns "ts_ns", "price", and "size".
+
+--------------------------------------------------------------
+
+2. compute_target_quantity(tradebook: pd.DataFrame, volume_interval: str = '5min', fraction: float = 0.01, quantile: float = 0.65) -> float
+-------------------------------------------------------------------------------------------------------------------------
+Summary:
+    Computes the target quantity Q as a fraction of the quantile (e.g., the 65th percentile) of the aggregated volume over a specified time interval.
+Details:
+    Input:
+        - tradebook: The cleaned tradebook DataFrame.
+        - volume_interval: A string (default "5min") defining the resampling interval.
+        - fraction: A float (default 0.01) representing the fraction of the volume quantile.
+        - quantile: A float (default 0.65) specifying the quantile level.
+    Processing:
+        - Resamples the data by the given interval and computes the sum of trade sizes.
+        - Finds the specified quantile of these volume sums and multiplies it by the fraction.
+    Output:
+        - A floating-point number representing the target quantity Q.
+
+--------------------------------------------------------------
+
+3. compute_min_size_threshold(tradebook: pd.DataFrame) -> float
+------------------------------------------------------------
+Summary:
+    Calculates the minimum size threshold g as the 5th percentile of all trade sizes in the tradebook.
+Details:
+    Input:
+        - tradebook: The cleaned tradebook DataFrame.
+    Processing:
+        - Computes the 5th percentile of the "size" column.
+    Output:
+        - A float value representing the minimum size threshold.
+
+--------------------------------------------------------------
+
+4. get_sample_window(tradebook: pd.DataFrame, window_length_min: float = 15, start_time: int = None) -> (pd.DataFrame, int, int)
+----------------------------------------------------------------------------------------------------------------------------------
+Summary:
+    Extracts a window (subset) of trades spanning a specified number of minutes from the tradebook.
+Details:
+    Input:
+        - tradebook: The cleaned tradebook DataFrame.
+        - window_length_min: The length of the desired window in minutes (default is 15).
+        - start_time: (Optional) A starting timestamp in nanoseconds. If not provided, a random valid start time is chosen.
+    Processing:
+        - Determines a random (or provided) start time ensuring the full window is within the tradebook’s time range.
+        - Extracts all trades between start_time and start_time + window_length.
+    Output:
+        - A tuple containing:
+            * The window DataFrame,
+            * The start time (ns),
+            * The end time (ns).
+
+--------------------------------------------------------------
+
+5. sequential_run_simulation_with_pause(tradebook_window: pd.DataFrame, Q: float, g: float, k: float, fee_rate: float, pause: float) -> dict
+----------------------------------------------------------------------------------------------------------------------------------
+Summary:
+    Simulates a sequential VWAP participation strategy by processing trade groups one by one, applying a pause after each fill until a target quantity Q is met.
+Details:
+    Input:
+        - tradebook_window: DataFrame with trades in the selected window.
+        - Q: The target quantity (positive for a buy, negative for a sell).
+        - g: The minimum size threshold.
+        - k: The participation factor (used to scale fills).
+        - fee_rate: The fee rate (e.g., 0.005 for 0.5% fee).
+        - pause: The pause duration (in seconds) after each fill.
+    Processing:
+        - Filters trades to select those on the aggressive side.
+        - Groups trades by timestamp and price.
+        - Iterates over these groups, calculating the “fill” as max(0, (group_size - g)) * k and applying a pause between groups.
+        - Continues until the cumulative fill reaches or exceeds |Q|.
+        - Calculates various metrics including execution VWAP, market VWAP, total fees, and time to completion.
+    Output:
+        - A dictionary containing summary metrics such as:
+            * target_quantity
+            * executed_quantity
+            * completion_rate
+            * execution_vwap
+            * market_vwap
+            * vwap_spread
+            * vwap_performance
+            * total_value
+            * total_fees
+            * num_trades
+            * time_to_completion_sec
+
+--------------------------------------------------------------
+
+6. monte_carlo_sequential_simulation_with_pause(tradebook: pd.DataFrame, target_quantity: float, min_size_threshold: float, fixed_k: float, fee_rate: float, pause: float, num_simulations: int = 10, window_length_min: float = 15) -> pd.DataFrame
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+Summary:
+    Performs a Monte Carlo simulation by running the sequential simulation over multiple random windows and aggregates the resulting key metrics.
+Details:
+    Input:
+        - tradebook: The cleaned tradebook DataFrame.
+        - target_quantity: The target quantity Q for the simulation.
+        - min_size_threshold: The minimum trade size threshold g.
+        - fixed_k: The participation factor k.
+        - fee_rate: The fee rate.
+        - pause: The pause duration between fills.
+        - num_simulations: Number of simulation runs (default 10).
+        - window_length_min: The length of each simulation window in minutes (default 15).
+    Processing:
+        - For each simulation run:
+            * A random sample window is selected.
+            * The arrival price (price of the first trade in the window) is noted.
+            * The sequential simulation is run.
+            * Key metrics are extracted and combined into a summary.
+    Output:
+        - A DataFrame where each row represents a simulation run with metrics such as:
+            * target_quantity, executed_quantity, completion_rate, execution_vwap, market_vwap, vwap_performance, total_value, total_fees, num_trades, time_to_completion_sec, arrival_price, and exec_vs_arrival_pct.
+
+--------------------------------------------------------------
+
+7. parameter_test(tradebook: pd.DataFrame, parameter_type: str = "Q", parameter_values=None, fraction_for_Q: float = 0.01, fixed_k: float = 0.03, num_simulations: int = 50, window_length_min: float = 15, fee_rate: float = 0.005, pause: float = 0.1) -> pd.DataFrame
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Summary:
+    Runs Monte Carlo simulations while varying one of two parameters: either the target quantity Q (by varying the fraction used to compute Q) or the participation factor k.
+Details:
+    Input:
+        - tradebook: The cleaned tradebook DataFrame.
+        - parameter_type: A string, either "Q" (to vary fractions for Q) or "K" (to vary the participation factor).
+        - parameter_values: A list of values; if testing "Q", these are fractions; if testing "K", these are k values.
+        - fraction_for_Q: When testing k, this fixed fraction is used to compute Q.
+        - fixed_k: When testing Q, this fixed k value is used.
+        - num_simulations, window_length_min, fee_rate, and pause: Parameters passed to the Monte Carlo simulation.
+    Processing:
+        - For each value in parameter_values, runs the Monte Carlo simulation.
+        - Adds an extra column 'parameter' to the results indicating the tested value.
+    Output:
+        - A combined DataFrame of simulation results with an additional column for the parameter value used.
+
+--------------------------------------------------------------
+
+8. plot_parameter_results(df: pd.DataFrame, param_label: str)
+------------------------------------------------------------
+Summary:
+    Generates histograms (using Seaborn) to visualize the distributions of key simulation metrics for different parameter values.
+Details:
+    Input:
+        - df: A DataFrame containing simulation results with a 'parameter' column.
+        - param_label: A string label describing the parameter (e.g., "Fraction" or "k Value").
+    Processing:
+        - Creates three subplots (one each for completion rate, time to completion, and the percentage deviation between execution VWAP and arrival price).
+        - Uses sns.histplot with the hue parameter to show separate distributions for each parameter value.
+    Output:
+        - Displays histograms for the three metrics.
