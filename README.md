@@ -1,7 +1,7 @@
 # VWAP Participation Algorithm for Cryptocurrency Markets
 
 ## Overview
-This project implements a simple VWAP (Volume-Weighted Average Price) participation algorithm for cryptocurrency markets. The algorithm simulates position accumulation while attempting to minimize trading costs in electronic markets, using high-frequency cryptocurrency trading data from 2024.
+This project implements a simple VWAP (Volume-Weighted Average Price) participation algorithm for cryptocurrency markets. The algorithm simulates position accumulation while attempting to minimize trading costs in electronic markets, using high-frequency cryptocurrency trading data from 2024. Nanosecond level data was pulled from our professor at the University of Chicago. If you have any questions please email me at kunjs@uchicago.edu
 
 ## Data Structure
 The project utilizes high-frequency trade and order book data with the following formats:
